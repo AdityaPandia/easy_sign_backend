@@ -1,174 +1,74 @@
-// const express = require("express");
-// const upload = require("../controllers/fileUpload");
-// const fs = require("fs");
-// const path = require("path");
-// const { PDFDocument, rgb } = require("pdf-lib");
-// const File = require("../models/File"); // Import the File model
-// const router = express.Router();
-
-// // Helper function to sign PDF
-// const signPdf = async (filePath, signerName, uploadsDir) => {
-//   try {
-//     const pdfPath = path.join(__dirname, "../" + filePath); // Correct path resolution
-//     const existingPdfBytes = fs.readFileSync(pdfPath);
-
-//     const pdfDoc = await PDFDocument.load(existingPdfBytes);
-
-//     const pages = pdfDoc.getPages();
-//     const firstPage = pages[0];
-
-//     // Set the signer name text on the PDF
-//     firstPage.drawText(signerName, {
-//       x: 50,
-//       y: 50,
-//       size: 12,
-//       color: rgb(0, 0, 0),
-//     });
-
-//     const signedPdfBytes = await pdfDoc.save();
-//     const signedFilePath = path.join(uploadsDir, "signed_" + path.basename(filePath));
-//     fs.writeFileSync(signedFilePath, signedPdfBytes);
-
-//     return `/tmp/${path.basename(signedFilePath)}`;
-//   } catch (error) {
-//     throw new Error("Error signing the PDF: " + error.message);
-//   }
-// };
-
-
-// router.post("/upload", upload.single("file"), async (req, res) => {
-//   try {
-//     if (!req.file) {
-//       return res.status(400).send({ error: "No file uploaded" });
-//     }
-
-//     // Save file information to the database
-//     const newFile = await File.create({
-//       fileName: req.file.filename,
-//       filePath: `/tmp/${req.file.filename}`,
-//     });
-
-//     // Return only the necessary fields in the response
-//     res.status(200).json({
-//       message: "File uploaded successfully",
-//       file: {
-//         id: newFile.id,
-//         fileName: newFile.fileName,
-//         filePath: newFile.filePath,
-//         createdAt: newFile.createdAt, // Include the timestamp
-//       },
-//     });
-//   } catch (error) {
-//     res.status(500).send({ error: "Error uploading file", details: error.message });
-//   }
-// });
-
-
-// // Route to sign a PDF
-// router.post("/sign-pdf", async (req, res) => {
-//   const { fileId, signerName } = req.body;
-
-//   if (!fileId || !signerName) {
-//     return res.status(400).send({ error: "File ID and signer name are required" });
-//   }
-
-//   try {
-//     const file = await File.findByPk(fileId);
-//     if (!file) {
-//       return res.status(404).send({ error: "File not found" });
-//     }
-
-//     const uploadsDir = path.join(__dirname, "../tmp");
-//     const signedFilePath = await signPdf(file.filePath, signerName, uploadsDir);
-
-//     file.signedFilePath = signedFilePath;
-//     file.signerName = signerName;
-//     await file.save();
-
-//     res.json({ signedFilePath });
-//   } catch (err) {
-//     console.error("Error signing PDF:", err);
-//     res.status(500).send({ error: "Error signing the PDF", details: err.message });
-//   }
-// });
-
-// // Route to get all documents (unsigned and signed)
-// router.get("/documents", async (req, res) => {
-//   try {
-//     // Fetch all files from the database
-//     const files = await File.findAll();
-
-//     // Separate unsigned and signed documents based on the database properties
-//     const unsigned = files.filter(file => !file.signedFilePath);
-//     const signed = files.filter(file => file.signedFilePath);
-
-//     res.status(200).json({
-//       unsigned: unsigned,
-//       signed: signed,
-//     });
-//   } catch (error) {
-//     res.status(500).send({ error: "Failed to fetch documents", details: error.message });
-//   }
-// });
-
-// module.exports = router;
-
-
-
-
-
-
-
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const { PDFDocument, rgb } = require("pdf-lib");
-const File = require("../models/File"); // Import the File model
 const upload = require("../controllers/fileUpload");
+const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { PDFDocument, rgb } = require("pdf-lib");
+const path = require("path");
+const File = require("../models/File");
+
 const router = express.Router();
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 
-// Helper function to sign PDF
-const signPdf = async (filePath, signerName, uploadsDir) => {
-  try {
-    const pdfPath = path.join(os.tmpdir(), filePath); // Adjust path to temp directory
-    const existingPdfBytes = fs.readFileSync(pdfPath);
+const S3_BUCKET = process.env.S3_BUCKET_NAME;
 
-    const pdfDoc = await PDFDocument.load(existingPdfBytes);
-
-    const pages = pdfDoc.getPages();
-    const firstPage = pages[0];
-
-    // Set the signer name text on the PDF
-    firstPage.drawText(signerName, {
-      x: 50,
-      y: 50,
-      size: 12,
-      color: rgb(0, 0, 0),
-    });
-
-    const signedPdfBytes = await pdfDoc.save();
-    const signedFilePath = path.join(uploadsDir, "signed_" + path.basename(filePath));
-    fs.writeFileSync(signedFilePath, signedPdfBytes);
-
-    return `/tmp/${path.basename(signedFilePath)}`;
-  } catch (error) {
-    throw new Error("Error signing the PDF: " + error.message);
-  }
+// Helper function to download file from S3
+const downloadFromS3 = async (key) => {
+  const params = {
+    Bucket: S3_BUCKET,
+    Key: key,
+  };
+  const command = new GetObjectCommand(params);
+  const response = await s3.send(command); // Using the send() method with the new SDK
+  return response.Body.transformToByteArray();
 };
 
+// Helper function to upload file to S3
+const uploadToS3 = async (key, buffer) => {
+  const params = {
+    Bucket: S3_BUCKET,
+    Key: key,
+    Body: buffer,
+  };
+  const command = new PutObjectCommand(params); // Use the correct command for uploading
+  await s3.send(command); // Correct method for the new SDK
+};
+
+// Helper function to sign PDF
+const signPdf = async (s3Key, signerName) => {
+  const pdfBytes = await downloadFromS3(s3Key);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const pages = pdfDoc.getPages();
+  const firstPage = pages[0];
+
+  firstPage.drawText(signerName, {
+    x: 50,
+    y: 50,
+    size: 12,
+    color: rgb(0, 0, 0),
+  });
+
+  const signedPdfBytes = await pdfDoc.save();
+  const signedKey = `signed_${path.basename(s3Key)}`;
+  await uploadToS3(signedKey, signedPdfBytes);
+
+  return signedKey;
+};
+
+// File upload route
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    const uploadsDir = os.tmpdir(); // Use temp directory
-    const filePath = path.join(uploadsDir, req.file.filename);
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
-    // Save the file to the temp directory
-    fs.writeFileSync(filePath, req.file.buffer);
-
-    // Save file information to the database
     const newFile = await File.create({
-      fileName: req.file.filename,
-      filePath: `/tmp/${req.file.filename}`,
+      fileName: req.file.originalname,
+      filePath: req.file.key,
     });
 
     res.status(200).json({
@@ -176,15 +76,58 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       file: {
         id: newFile.id,
         fileName: newFile.fileName,
-        filePath: newFile.filePath,
+        filePath: req.file.key,
         createdAt: newFile.createdAt,
       },
     });
   } catch (error) {
     console.error("Error uploading file:", error);
-    res.status(500).send({ error: "Error uploading file", details: error.message });
+    res.status(500).json({ error: "Error uploading file", details: error.message });
   }
 });
 
-// Other routes remain unchanged
+// PDF signing route
+router.post("/sign-pdf", async (req, res) => {
+  const { fileId, signerName } = req.body;
+
+  if (!fileId || !signerName) {
+    return res.status(400).json({ error: "File ID and signer name are required" });
+  }
+
+  try {
+    const file = await File.findByPk(fileId);
+    if (!file) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    const signedKey = await signPdf(file.filePath, signerName);
+
+    file.signedFilePath = signedKey;
+    file.signerName = signerName;
+    await file.save();
+
+    res.status(200).json({ signedFilePath: signedKey });
+  } catch (error) {
+    console.error("Error signing PDF:", error);
+    res.status(500).json({ error: "Error signing the PDF", details: error.message });
+  }
+});
+
+// Fetch documents route
+router.get("/documents", async (req, res) => {
+  try {
+    const files = await File.findAll();
+    const unsigned = files.filter((file) => !file.signedFilePath);
+    const signed = files.filter((file) => file.signedFilePath);
+
+    res.status(200).json({
+      unsigned,
+      signed,
+    });
+  } catch (error) {
+    console.error("Error fetching documents:", error);
+    res.status(500).json({ error: "Failed to fetch documents", details: error.message });
+  }
+});
+
 module.exports = router;

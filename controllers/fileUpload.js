@@ -1,33 +1,37 @@
 const multer = require("multer");
-const path = require("path");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const multerS3 = require("multer-s3");
 
-// Define storage for the files
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // Specify the upload folder
-    cb(null, "tmp/");
+// Configure AWS S3 client from the new SDK
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
-  filename: (req, file, cb) => {
-    // Ensure the file name is unique using Date.now
-    cb(null, Date.now() + path.extname(file.originalname)); // Adds file extension
-  }
 });
 
-// Set file size limit (optional)
+// Configure multer to use S3
 const upload = multer({
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // Limit file size to 10 MB
+  storage: multerS3({
+    s3: s3,
+    bucket: process.env.S3_BUCKET_NAME, // Set your bucket name
+    key: (req, file, cb) => {
+      const uniqueName = Date.now() + "_" + file.originalname;
+      cb(null, uniqueName);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
   fileFilter: (req, file, cb) => {
-    // Only allow doc, docx, pdf file types
     const filetypes = /doc|docx|pdf/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const extname = filetypes.test(file.originalname.toLowerCase());
     const mimetype = filetypes.test(file.mimetype);
     if (extname && mimetype) {
-      return cb(null, true);
+      cb(null, true);
+    } else {
+      cb(new Error("Only .doc, .docx, and .pdf files are allowed."));
     }
-    cb(new Error("Only .doc, .docx, and .pdf files are allowed."));
-  }
+  },
 });
 
-// Export the upload middleware
 module.exports = upload;
