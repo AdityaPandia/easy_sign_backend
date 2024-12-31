@@ -29,33 +29,11 @@ const signPdf = async (filePath, signerName, uploadsDir) => {
     const signedFilePath = path.join(uploadsDir, "signed_" + path.basename(filePath));
     fs.writeFileSync(signedFilePath, signedPdfBytes);
 
-    return `/uploads/${path.basename(signedFilePath)}`;
+    return `/tmp/${path.basename(signedFilePath)}`;
   } catch (error) {
     throw new Error("Error signing the PDF: " + error.message);
   }
 };
-
-// Route for uploading files
-// router.post("/upload", upload.single("file"), async (req, res) => {
-//   try {
-//     if (!req.file) {
-//       return res.status(400).send({ error: "No file uploaded" });
-//     }
-
-//     // Save file information to the database
-//     const newFile = await File.create({
-//       fileName: req.file.filename,
-//       filePath: `/uploads/${req.file.filename}`,
-//     });
-
-//     res.status(200).json({
-//       message: "File uploaded successfully",
-//       file: newFile, // Return the saved file data, including the database ID
-//     });
-//   } catch (error) {
-//     res.status(500).send({ error: "Error uploading file", details: error.message });
-//   }
-// });
 
 
 router.post("/upload", upload.single("file"), async (req, res) => {
@@ -67,7 +45,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     // Save file information to the database
     const newFile = await File.create({
       fileName: req.file.filename,
-      filePath: `/uploads/${req.file.filename}`,
+      filePath: `/tmp/${req.file.filename}`,
     });
 
     // Return only the necessary fields in the response
@@ -100,7 +78,7 @@ router.post("/sign-pdf", async (req, res) => {
       return res.status(404).send({ error: "File not found" });
     }
 
-    const uploadsDir = path.join(__dirname, "../uploads");
+    const uploadsDir = path.join(__dirname, "../tmp");
     const signedFilePath = await signPdf(file.filePath, signerName, uploadsDir);
 
     file.signedFilePath = signedFilePath;
