@@ -39,31 +39,60 @@ app.use(bodyParser.json());
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/files", require("./routes/fileUploadRoutes")); // Mount file upload routes
 app.use("/uploads", express.static(path.join(__dirname, "tmp")));
-app.get("/api/uploads/history", (req, res) => {
-    const uploadsDir = path.join(__dirname, "tmp");
+// app.get("/api/uploads/history", (req, res) => {
+//     const uploadsDir = path.join(__dirname, "tmp");
 
+//     // Read the uploads directory
+//     fs.readdir(uploadsDir, (err, files) => {
+//         if (err) {
+//             console.error("Error reading uploads directory:", err);
+//             return res.status(500).json({ error: "Failed to fetch upload history" });
+//         }
+
+//         // Get file metadata for each file
+//         const uploadHistory = files.map(file => {
+//             const filePath = path.join(uploadsDir, file);
+//             const stats = fs.statSync(filePath);
+//             return {
+//                 fileName: file,
+//                 filePath: `/tmp/${file}`, // Public URL
+//                 size: stats.size, // Size in bytes
+//                 uploadedAt: moment(stats.mtime).format("YYYY-MM-DD HH:mm:ss"), // Last modified time
+//             };
+//         });
+
+//         res.json(uploadHistory);
+//     });
+// });
+
+
+
+// Serve uploaded files from the /tmp directory
+app.get("/api/uploads/history", (req, res) => {
+    const uploadsDir = os.tmpdir(); // Use the system temp directory
+  
     // Read the uploads directory
     fs.readdir(uploadsDir, (err, files) => {
-        if (err) {
-            console.error("Error reading uploads directory:", err);
-            return res.status(500).json({ error: "Failed to fetch upload history" });
-        }
-
-        // Get file metadata for each file
-        const uploadHistory = files.map(file => {
-            const filePath = path.join(uploadsDir, file);
-            const stats = fs.statSync(filePath);
-            return {
-                fileName: file,
-                filePath: `/tmp/${file}`, // Public URL
-                size: stats.size, // Size in bytes
-                uploadedAt: moment(stats.mtime).format("YYYY-MM-DD HH:mm:ss"), // Last modified time
-            };
-        });
-
-        res.json(uploadHistory);
+      if (err) {
+        console.error("Error reading uploads directory:", err);
+        return res.status(500).json({ error: "Failed to fetch upload history" });
+      }
+  
+      // Get file metadata for each file
+      const uploadHistory = files.map((file) => {
+        const filePath = path.join(uploadsDir, file);
+        const stats = fs.statSync(filePath);
+        return {
+          fileName: file,
+          filePath: `/tmp/${file}`, // Public URL
+          size: stats.size, // Size in bytes
+          uploadedAt: moment(stats.mtime).format("YYYY-MM-DD HH:mm:ss"), // Last modified time
+        };
+      });
+  
+      res.json(uploadHistory);
     });
-});
+  });
 
 // Start server
 const PORT = process.env.PORT || 5000;
