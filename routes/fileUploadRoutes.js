@@ -1,5 +1,7 @@
 const express = require("express");
-const upload = require("../controllers/fileUpload");
+const upload = require("../controllers/fileUpload");  // Ensure this import is correct
+const authenticateUser = require("../middlewares/authenticateUser"); // Correct import
+// Import the middleware
 const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { PDFDocument, rgb } = require("pdf-lib");
 const path = require("path");
@@ -59,16 +61,22 @@ const signPdf = async (s3Key, signerName) => {
   return signedKey;
 };
 
-// File upload route
-router.post("/upload", upload.single("file"), async (req, res) => {
+// File upload route - Add middleware here
+router.post("/upload", authenticateUser, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
+    const userId = req.user?.id; // Get the user ID from the request
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
     const newFile = await File.create({
       fileName: req.file.originalname,
-      filePath: req.file.key,
+      filePath: req.file.key, // Ensure this is coming from the upload middleware
+      userId, // Save the user ID with the file record
     });
 
     res.status(200).json({
@@ -76,7 +84,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       file: {
         id: newFile.id,
         fileName: newFile.fileName,
-        filePath: req.file.key,
+        filePath: req.file.key, // Ensure the correct key is used
+        userId: newFile.userId,
         createdAt: newFile.createdAt,
       },
     });
@@ -86,8 +95,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// PDF signing route
-router.post("/sign-pdf", async (req, res) => {
+// PDF signing route - Add middleware here as well
+router.post("/sign-pdf", authenticateUser, async (req, res) => {
   const { fileId, signerName } = req.body;
 
   if (!fileId || !signerName) {
@@ -104,6 +113,7 @@ router.post("/sign-pdf", async (req, res) => {
 
     file.signedFilePath = signedKey;
     file.signerName = signerName;
+    file.signedAt = new Date();
     await file.save();
 
     res.status(200).json({ signedFilePath: signedKey });
@@ -113,10 +123,10 @@ router.post("/sign-pdf", async (req, res) => {
   }
 });
 
-// Fetch documents route
-router.get("/documents", async (req, res) => {
+// Fetch documents route - Add middleware here as well
+router.get("/documents", authenticateUser, async (req, res) => {
   try {
-    const files = await File.findAll();
+    const files = await File.findAll({ where: { userId: req.user.id } });
     const unsigned = files.filter((file) => !file.signedFilePath);
     const signed = files.filter((file) => file.signedFilePath);
 
