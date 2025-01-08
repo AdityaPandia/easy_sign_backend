@@ -156,16 +156,36 @@ const signPdfWithImage = async (s3Key, imageBuffer, x, y, width, height) => {
   // Embed the image into the PDF
   const image = await pdfDoc.embedPng(imageBuffer);
 
-  // Get the first page of the PDF
+  // Get all the pages of the PDF
   const pages = pdfDoc.getPages();
-  const firstPage = pages[0];
 
-  // Draw the image on the PDF
-  firstPage.drawImage(image, {
-    x, // X-coordinate on the page
-    y, // Y-coordinate on the page
-    width, // Width of the image
-    height, // Height of the image
+  // Select the last page
+  const lastPage = pages[pages.length - 1];
+
+  // Get the dimensions of the last page
+  const { width: pageWidth, height: pageHeight } = lastPage.getSize();
+
+  // Set default values for image dimensions
+  const scaledImage = image.scale(1); // Default scaling factor
+  const imageWidth = width || scaledImage.width;
+  const imageHeight = height || scaledImage.height;
+
+  // Calculate placement coordinates for bottom-left corner
+  const marginX = 10; // Margin from the left edge
+  const marginY = 10; // Margin from the bottom edge
+  const adjustedX = x || marginX; // Default X-coordinate with margin
+  const adjustedY = y || marginY; // Default Y-coordinate with margin
+
+  // Ensure coordinates are within bounds
+  const finalX = Math.max(adjustedX, marginX); // Ensure within page width
+  const finalY = Math.max(adjustedY, marginY); // Ensure above bottom margin
+
+  // Draw the image on the last page
+  lastPage.drawImage(image, {
+    x: finalX,
+    y: finalY,
+    width: imageWidth,
+    height: imageHeight,
   });
 
   // Save the modified PDF
