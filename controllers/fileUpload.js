@@ -23,13 +23,15 @@ const upload = multer({
   }),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
   fileFilter: (req, file, cb) => {
-    const filetypes = /doc|docx|pdf/;
+    // const filetypes = /doc|docx|pdf/;
+    const filetypes = /doc|docx|pdf|png|jpg|jpeg/; 
     const extname = filetypes.test(file.originalname.toLowerCase());
     const mimetype = filetypes.test(file.mimetype);
     if (extname && mimetype) {
       cb(null, true);
     } else {
-      cb(new Error("Only .doc, .docx, and .pdf files are allowed."));
+      // cb(new Error("Only .doc, .docx, and .pdf files are allowed."));
+      cb(new Error("Only .doc, .docx, .pdf, .png, .jpg, and .jpeg files are allowed."));
     }
   },
 });

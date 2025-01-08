@@ -6,7 +6,10 @@ const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/clien
 const { PDFDocument, rgb } = require("pdf-lib");
 const path = require("path");
 const File = require("../models/File");
+const app = express();
 
+// Middleware to parse incoming JSON requests
+app.use(express.json());
 const router = express.Router();
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
@@ -139,5 +142,149 @@ router.get("/documents", authenticateUser, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch documents", details: error.message });
   }
 });
+
+//new
+
+// Update the helper function to support image-based PDF signing
+const signPdfWithImage = async (s3Key, imageBuffer, x, y, width, height) => {
+  // Download the PDF from S3
+  const pdfBytes = await downloadFromS3(s3Key);
+
+  // Load the PDF document
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+
+  // Embed the image into the PDF
+  const image = await pdfDoc.embedPng(imageBuffer);
+
+  // Get the first page of the PDF
+  const pages = pdfDoc.getPages();
+  const firstPage = pages[0];
+
+  // Draw the image on the PDF
+  firstPage.drawImage(image, {
+    x, // X-coordinate on the page
+    y, // Y-coordinate on the page
+    width, // Width of the image
+    height, // Height of the image
+  });
+
+  // Save the modified PDF
+  const signedPdfBytes = await pdfDoc.save();
+
+  // Generate a new S3 key for the signed PDF
+  const signedKey = `signed_${path.basename(s3Key)}`;
+
+  // Upload the signed PDF to S3
+  await uploadToS3(signedKey, signedPdfBytes);
+
+  return signedKey;
+};
+
+// Add a new API endpoint for signing the PDF with an image
+// router.post("/sign-pdf-with-image", authenticateUser,  upload.single("signatureImage"),async (req, res) => {
+//   const { fileId, x, y, width, height } = req.body;
+// console.log("THIS IS REQUEST BODY : " );
+// console.log(req.body);
+// console.log("DONE");
+//   if (!fileId || !req.file) {
+//     return res.status(400).json({ error: "File ID and signature image are required" });
+//   }
+
+//   try {
+//     // Fetch the file record from the database
+//     const file = await File.findByPk(fileId);
+//     if (!file) {
+//       return res.status(404).json({ error: "File not found" });
+//     }
+
+//     // Process the uploaded image
+//     const imageBuffer = req.file.buffer;
+
+//     // Sign the PDF with the uploaded image
+//     const signedKey = await signPdfWithImage(
+//       file.filePath,
+//       imageBuffer,
+//       x || 50, // Default X position
+//       y || 50, // Default Y position
+//       width || 100, // Default width
+//       height || 50 // Default height
+//     );
+
+//     // Update the file record with signed PDF information
+//     file.signedFilePath = signedKey;
+//     file.signedAt = new Date();
+//     await file.save();
+
+//     res.status(200).json({ signedFilePath: signedKey });
+//   } catch (error) {
+//     console.error("Error signing PDF with image:", error);
+//     res.status(500).json({ error: "Error signing the PDF with image", details: error.message });
+//   }
+// });
+
+
+
+
+router.post("/sign-pdf-with-image", authenticateUser, upload.single("signatureImage"), async (req, res) => {
+  const { fileId, x, y, width, height } = req.body;
+
+  if (!fileId || !req.file) {
+    return res.status(400).json({ error: "File ID and signature image are required" });
+  }
+
+  try {
+    // Fetch the file record from the database
+    const file = await File.findByPk(fileId);
+    if (!file) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    // Download the file from S3
+    const params = {
+      Bucket: process.env.S3_BUCKET_NAME,
+      Key: req.file.key, // Key from multerS3
+    };
+
+    const command = new GetObjectCommand(params);
+    const response = await s3.send(command);
+
+    // Read the data from the response.Body stream
+    const streamToBuffer = async (stream) => {
+      const chunks = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    };
+    const imageBuffer = await streamToBuffer(response.Body);
+
+    // Sign the PDF with the uploaded image
+    const signedKey = await signPdfWithImage(
+      file.filePath,
+      imageBuffer,
+       parseFloat(x) || 50,  // Default to 50 if the value is not a valid number
+     parseFloat(y) || 50,
+   parseFloat(width) || 100,
+     parseFloat(height) || 50
+    );
+
+    // Update the file record with signed PDF information
+    file.signedFilePath = signedKey;
+    file.signedAt = new Date();
+    await file.save();
+
+    res.status(200).json({ signedFilePath: signedKey });
+  } catch (error) {
+    console.error("Error signing PDF with image:", error);
+    res.status(500).json({ error: "Error signing the PDF with image", details: error.message });
+  }
+});
+
+
+
+
+//till here
+
+
 
 module.exports = router;
