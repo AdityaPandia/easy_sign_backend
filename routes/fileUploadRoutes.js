@@ -181,49 +181,6 @@ const signPdfWithImage = async (s3Key, imageBuffer, x, y, width, height) => {
 };
 
 // Add a new API endpoint for signing the PDF with an image
-// router.post("/sign-pdf-with-image", authenticateUser,  upload.single("signatureImage"),async (req, res) => {
-//   const { fileId, x, y, width, height } = req.body;
-// console.log("THIS IS REQUEST BODY : " );
-// console.log(req.body);
-// console.log("DONE");
-//   if (!fileId || !req.file) {
-//     return res.status(400).json({ error: "File ID and signature image are required" });
-//   }
-
-//   try {
-//     // Fetch the file record from the database
-//     const file = await File.findByPk(fileId);
-//     if (!file) {
-//       return res.status(404).json({ error: "File not found" });
-//     }
-
-//     // Process the uploaded image
-//     const imageBuffer = req.file.buffer;
-
-//     // Sign the PDF with the uploaded image
-//     const signedKey = await signPdfWithImage(
-//       file.filePath,
-//       imageBuffer,
-//       x || 50, // Default X position
-//       y || 50, // Default Y position
-//       width || 100, // Default width
-//       height || 50 // Default height
-//     );
-
-//     // Update the file record with signed PDF information
-//     file.signedFilePath = signedKey;
-//     file.signedAt = new Date();
-//     await file.save();
-
-//     res.status(200).json({ signedFilePath: signedKey });
-//   } catch (error) {
-//     console.error("Error signing PDF with image:", error);
-//     res.status(500).json({ error: "Error signing the PDF with image", details: error.message });
-//   }
-// });
-
-
-
 
 router.post("/sign-pdf-with-image", authenticateUser, upload.single("signatureImage"), async (req, res) => {
   const { fileId, x, y, width, height } = req.body;
