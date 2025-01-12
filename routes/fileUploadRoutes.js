@@ -44,25 +44,68 @@ const uploadToS3 = async (key, buffer) => {
 };
 
 // Helper function to sign PDF
+// const signPdf = async (s3Key, signerName) => {
+//   const pdfBytes = await downloadFromS3(s3Key);
+//   const pdfDoc = await PDFDocument.load(pdfBytes);
+//   const pages = pdfDoc.getPages();
+//   const firstPage = pages[0];
+
+//   firstPage.drawText(signerName, {
+//     x: 50,
+//     y: 50,
+//     size: 12,
+//     color: rgb(0, 0, 0),
+//   });
+
+//   const signedPdfBytes = await pdfDoc.save();
+//   const signedKey = `signed_${path.basename(s3Key)}`;
+//   await uploadToS3(signedKey, signedPdfBytes);
+
+//   return signedKey;
+// };
+
+
+// Updated helper function to sign PDF
 const signPdf = async (s3Key, signerName) => {
   const pdfBytes = await downloadFromS3(s3Key);
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const pages = pdfDoc.getPages();
-  const firstPage = pages[0];
 
-  firstPage.drawText(signerName, {
-    x: 50,
-    y: 50,
+  if (pages.length === 0) {
+    throw new Error("The PDF file has no pages to sign.");
+  }
+
+  // Get the last page of the PDF
+  const lastPage = pages[pages.length - 1];
+
+  // Get the dimensions of the page to calculate the bottom left position
+  const { width, height } = lastPage.getSize();
+  const x = 10; // 10 units from the left edge
+  const y = 30; // 30 units from the bottom edge
+
+  // Add the text "Easy Signed By:" and the signer's name
+  lastPage.drawText("Easy Signed By:", {
+    x: x,
+    y: y + 12, // Offset slightly above the name
+    size: 10,
+    color: rgb(0, 0, 0),
+  });
+
+  lastPage.drawText(signerName, {
+    x: x,
+    y: y, // Positioned directly below "Easy Signed By:"
     size: 12,
     color: rgb(0, 0, 0),
   });
 
+  // Save the signed PDF
   const signedPdfBytes = await pdfDoc.save();
   const signedKey = `signed_${path.basename(s3Key)}`;
   await uploadToS3(signedKey, signedPdfBytes);
 
   return signedKey;
 };
+
 
 // File upload route - Add middleware here
 router.post("/upload", authenticateUser, upload.single("file"), async (req, res) => {
