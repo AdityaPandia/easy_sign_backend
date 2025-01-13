@@ -3,7 +3,7 @@ const upload = require("../controllers/fileUpload");  // Ensure this import is c
 const authenticateUser = require("../middlewares/authenticateUser"); // Correct import
 // Import the middleware
 const { S3Client, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
-const { PDFDocument, rgb } = require("pdf-lib");
+const { PDFDocument, rgb, StandardFonts  } = require("pdf-lib");
 const path = require("path");
 const File = require("../models/File");
 const app = express();
@@ -214,14 +214,32 @@ const signPdfWithImage = async (s3Key, imageBuffer, x, y, width, height) => {
   const imageHeight = height || scaledImage.height;
 
   // Calculate placement coordinates for bottom-left corner
-  const marginX = 10; // Margin from the left edge
-  const marginY = 10; // Margin from the bottom edge
+  const marginX = 2; // Margin from the left edge
+  const marginY = 2; // Margin from the bottom edge
   const adjustedX = x || marginX; // Default X-coordinate with margin
   const adjustedY = y || marginY; // Default Y-coordinate with margin
 
   // Ensure coordinates are within bounds
   const finalX = Math.max(adjustedX, marginX); // Ensure within page width
   const finalY = Math.max(adjustedY, marginY); // Ensure above bottom margin
+
+  // Set font and size for the text
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontSize = 12; // Adjust font size as needed
+  const text = "Easy Signed By:";
+
+  // Calculate text placement
+  const textX = finalX; // Align with image X-coordinate
+  const textY = finalY + imageHeight + 5; // Place above the image with padding
+
+  // Draw the text on the page
+  lastPage.drawText(text, {
+    x: textX,
+    y: textY,
+    size: fontSize,
+    font: font,
+    color: rgb(0, 0, 0), // Black color
+  });
 
   // Draw the image on the last page
   lastPage.drawImage(image, {
